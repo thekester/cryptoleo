@@ -33,6 +33,14 @@ Cryptoleo's security relies on the chaotic properties of its core, ensuring:
 To install the requirements:
 ```sh
 pip install numpy
+pip install python-dotenv
+pip install pytest
+```
+
+Create a `.env` file with the following content:
+```dotenv
+KEY=<Your_Secret_Key>
+IV=<Your_initial_vector>
 ```
 
 ## Getting Started

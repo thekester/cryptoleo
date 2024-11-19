@@ -1,5 +1,7 @@
 import numpy as np
 from hashlib import sha256
+from dotenv import load_dotenv
+import os
 
 class ChaoticSystem:
     def __init__(self, key):
@@ -223,12 +225,25 @@ class CNN_Duplex:
 
 # Exemple d'utilisation
 if __name__ == "__main__":
-    # Clé secrète de 16 octets (128 bits)
-    key = "clefsecrete123456".encode('utf-8')
-    # Vecteur d'initialisation (IV) de 16 octets
-    iv = "vecteurinitialiv1".encode('utf-8')
+    # Importer dotenv pour charger les variables d'environnement
+    from dotenv import load_dotenv
+    import os
+
+    # Charger les variables d'environnement depuis le fichier .env
+    load_dotenv()
+
+    # Clé secrète de 16 octets (128 bits) chargée depuis .env
+    key = os.getenv('KEY').encode('utf-8')
+    # Vecteur d'initialisation (IV) de 16 octets chargé depuis .env
+    iv = os.getenv('IV').encode('utf-8')
+
+    # Vérification que la clé et l'IV ont été correctement chargés
+    if key is None or iv is None:
+        raise ValueError("La clé ou l'IV n'a pas été trouvé dans le fichier .env")
+
     # Initialisation du schéma de chiffrement
     cnn_duplex = CNN_Duplex(key, iv)
+
     # Données associées (données supplémentaires à authentifier mais non chiffrées)
     associated_data = "Informations d'en-tête".encode('utf-8')
     # Texte en clair à chiffrer
