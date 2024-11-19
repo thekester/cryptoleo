@@ -26,9 +26,10 @@ Cryptoleo's security relies on the chaotic properties of its core, ensuring:
 - **Diffusion Effect:** The Strict Avalanche Criterion (SAC) is achieved, meaning each bit in the plaintext affects the output significantly.
 
 ## Requirements
-- Python 3.7+
+- Python 3.8+
 - `numpy`: Used for numerical operations.
-- `hashlib`: Provides SHA-256 for key hashing.
+- `python-dotenv`: Used for environment variable management.
+- `pytest`: Used for testing.
 
 To install the requirements:
 ```sh
@@ -46,21 +47,26 @@ IV=<Your_initial_vector>
 ## Getting Started
 1. **Clone the Repository**:
    ```sh
-   git clone https://github.com/yourusername/cryptoleo.git
+   git clone https://github.com/thekester/cryptoleo.git
    cd cryptoleo
    ```
 
-2. **Run the Example**:
+2. **Install the Package**:
    ```sh
-   python cryptoleo.py
+   pip install -e .
    ```
 
-3. **Encryption and Decryption Example**:
-   - Replace the `key`, `iv`, `associated_data`, and `plaintext` variables in `cryptoleo.py` to test different inputs.
+3. **Run the Example**:
+   ```sh
+   python -m cryptoleo.cryptoleo
+   ```
+
+4. **Encryption and Decryption Example**:
+   - Replace the `key`, `iv`, `associated_data`, and `plaintext` variables in `cryptoleo/cryptoleo.py` to test different inputs.
 
 ## Usage
 ```python
-from cryptoleo import CNN_Duplex
+from cryptoleo.cryptoleo import CNN_Duplex
 
 # Define the key and IV
 key = b"clefsecrete123456"
@@ -90,6 +96,11 @@ except ValueError:
 ## Testing
 - **Key Sensitivity Test**: Change one bit in the key and observe changes in the ciphertext.
 - **Message Sensitivity Test**: Change one bit in the plaintext and verify the generated ciphertext.
+
+To run the tests:
+```sh
+pytest tests/test_cryptoleo.py
+```
 
 ## Limitations and Future Work
 - **Performance**: The current implementation is computationally intensive due to the chaotic maps and neural network.
