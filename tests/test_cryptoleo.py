@@ -1,7 +1,12 @@
 import pytest
-from cryptoleo import ChaoticSystem, ChaoticNeuralNetwork, CNN_Duplex
+from cryptoleo.cryptoleo import ChaoticSystem, ChaoticNeuralNetwork, CNN_Duplex
 from dotenv import load_dotenv
 import os
+
+import sys
+print("PYTHONPATH:", sys.path)
+print("Current Directory:", os.getcwd())
+
 
 # Charger les variables d'environnement depuis le fichier .env
 load_dotenv()
