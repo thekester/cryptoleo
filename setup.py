@@ -7,7 +7,8 @@ setup(
     install_requires=[
         'python-dotenv',
         'numpy',
-        'scipy'
+        'scipy',
+        'tqdm'
     ],
     extras_require={
         'dev': [

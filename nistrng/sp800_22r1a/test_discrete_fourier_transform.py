@@ -1,4 +1,3 @@
-#
 # Copyright (C) 2019 Luca Pasqualini
 # University of Siena - Artificial Intelligence Laboratory - SAILab
 #
@@ -44,6 +43,8 @@ class DiscreteFourierTransformTest(Test):
         bits_copy: numpy.ndarray = bits.copy()
         if (bits_copy.size % 2) == 1:
             bits_copy = bits_copy[:-1]
+        # Convert bits_copy to signed integers to allow -1
+        bits_copy = bits_copy.astype(numpy.int8)
         # Convert all the zeros in the array to -1
         bits_copy[bits_copy == 0] = -1
         # Compute DFT
