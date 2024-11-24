@@ -7,6 +7,8 @@ Cryptoleo is a novel implementation of Authenticated Encryption with Associated 
 
 Unlike traditional AEAD schemes, Cryptoleo leverages chaotic maps (Skew-Tent Map and Discrete Piecewise Linear Chaotic Map) within its chaotic compression function, providing strong randomness and non-linearity. This implementation is designed for enhanced security, especially against attacks such as differential cryptanalysis, while being efficient for applications requiring authenticated encryption.
 
+That project use NIST tests from https://github.com/InsaneMonster/NistRng/tree/master
+
 ## Features
 - **Authenticated Encryption with Associated Data (AEAD):** Provides both confidentiality and authentication in a single cryptographic operation.
 - **Chaotic Neural Network:** Incorporates a single-layer CNN to generate pseudo-random weights and biases, ensuring unpredictable outputs.
