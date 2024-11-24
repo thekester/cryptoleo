@@ -1,64 +1,41 @@
-# nist_tests.py
-import math
 import numpy as np
+import sys
+import os
 
-def monobit_test(bits):
-    n = len(bits)
-    s_obs = bits.count('1') - bits.count('0')
-    s = abs(s_obs) / math.sqrt(n)
-    p_value = math.erfc(s / math.sqrt(2))
-    return p_value
+# Ajouter le dossier parent au chemin de recherche des modules
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.abspath(os.path.join(current_dir, '..'))
+sys.path.append(parent_dir)
 
-def runs_test(bits):
-    n = len(bits)
-    pi = bits.count('1') / n
-    tau = 2 / math.sqrt(n)
-    if abs(pi - 0.5) >= tau:
-        return 0.0  # Échec du test
-    v_obs = 1
-    for i in range(1, n):
-        if bits[i] != bits[i-1]:
-            v_obs += 1
-    p_value = math.erfc(abs(v_obs - (2 * n * pi * (1 - pi))) / (2 * math.sqrt(2 * n) * pi * (1 - pi)))
-    return p_value
+from nistrng import *
+from tqdm import tqdm  # Importation de tqdm pour les barres de progression
 
-def poker_test(bits, m=4):
-    n = len(bits)
-    if n % m != 0:
-        bits = bits[:-(n % m)]
-        n = len(bits)
-    k = n // m
-    counts = {}
-    for i in range(k):
-        block = bits[i*m:(i+1)*m]
-        counts[block] = counts.get(block, 0) + 1
-    sum_val = sum(count**2 for count in counts.values())
-    x = ((16 / k) * sum_val) - k
-    p_value = math.exp(-x / 2)
-    return p_value
+# Lire le keystream depuis le fichier 'keystream.bin'
+with open('keystream.bin', 'rb') as f:
+    keystream_bytes = f.read()
 
-def convert_keystream_to_bits(input_file):
-    bits = ''
-    with open(input_file, 'rb') as f:
-        byte = f.read(1)
-        while byte:
-            bits += bin(ord(byte))[2:].zfill(8)
-            byte = f.read(1)
-    return bits
+# Convertir le keystream en une séquence de bits signés
+keystream_bits = np.unpackbits(np.frombuffer(keystream_bytes, dtype=np.uint8)).astype(np.int8)
+print(f"Nombre total de bits dans le keystream : {len(keystream_bits)}")
 
-if __name__ == "__main__":
-    # Lire le keystream depuis le fichier
-    bits = convert_keystream_to_bits('keystream.bin')
+# Vérifier l'éligibilité des tests pour la séquence donnée
+eligible_battery = check_eligibility_all_battery(keystream_bits, SP800_22R1A_BATTERY)
 
-    # Limiter la longueur pour les tests (par exemple, 1 million de bits)
-    bits = bits[:1000000]
+# Afficher les tests éligibles
+print("Tests éligibles du NIST SP800-22r1a :")
+for test_name in eligible_battery.keys():
+    print(f"- {test_name}")
 
-    # Exécuter les tests NIST
-    p_value_monobit = monobit_test(bits)
-    print(f"Monobit Test p-value: {p_value_monobit}")
+# Exécuter tous les tests éligibles avec barre de progression
+results = run_all_battery(keystream_bits, eligible_battery)
 
-    p_value_runs = runs_test(bits)
-    print(f"Runs Test p-value: {p_value_runs}")
-
-    p_value_poker = poker_test(bits)
-    print(f"Poker Test p-value: {p_value_poker}")
+# Afficher les résultats des tests
+print("\nRésultats des tests :")
+for result, elapsed_time in results:
+    if result is not None:
+        if result.passed:
+            print(f"- PASSED - score: {np.round(result.score, 3)} - {result.name} - elapsed time: {elapsed_time} ms")
+        else:
+            print(f"- FAILED - score: {np.round(result.score, 3)} - {result.name} - elapsed time: {elapsed_time} ms")
+    else:
+        print("- Test non éligible ou échoué.")
