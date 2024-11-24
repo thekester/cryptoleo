@@ -2,7 +2,7 @@ name: Python package
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main ]  # Remplacez 'main' par la branche que vous utilisez
   pull_request:
     branches: [ main ]
 
@@ -13,22 +13,24 @@ jobs:
 
     strategy:
       matrix:
-        python-version: [3.12]
+        python-version: [3.12]  # Utiliser uniquement la dernière version de Python
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pycryptodome  # Installation de pycryptodome
+        pip install -e .[dev]  # Installer votre package en mode editable avec les dépendances de dev
+
     - name: Run tests
-      run: |
-        pytest tests/test_cryptoleo.py -v
       env:
         KEY: ${{ secrets.KEY }}
         IV: ${{ secrets.IV }}
+      run: |
+        pytest

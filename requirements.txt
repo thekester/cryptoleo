@@ -1,0 +1,6 @@
+        'python-dotenv',
+        'numpy',
+        'scipy',
+        'tqdm',
+        'pycryptodome'
+                    'pytest',
