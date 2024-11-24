@@ -1,5 +1,5 @@
 import pytest
-from cryptoleo.cryptoleoretry import ChaoticSystem, ChaoticNeuralNetwork, CNN_Duplex
+from cryptoleo.cryptoleoretry import ChaoticSystem, ChaoticNeuralNetwork, CNN_Duplex, generate_and_overwrite_env
 from dotenv import load_dotenv
 import os
 from pathlib import Path
@@ -8,29 +8,49 @@ from pathlib import Path
 def setup_env():
     """
     Fixture pour charger les variables d'environnement KEY et IV et les convertir en bytes.
+    Si le fichier .env n'existe pas ou contient des valeurs invalides, génère un nouveau fichier .env.
     """
     dotenv_path = Path(__file__).resolve().parent.parent / 'cryptoleo' / '.env'
+    
+    # Vérifier si le fichier .env existe
+    if not dotenv_path.exists():
+        print(f"Fichier .env non trouvé à {dotenv_path}. Génération d'un nouveau fichier .env.")
+        key, iv = generate_and_overwrite_env(env_path=dotenv_path)
+    else:
+        load_dotenv(dotenv_path=dotenv_path)
+        print(f"Chargement des variables d'environnement depuis {dotenv_path}")
+        
+        key_hex = os.getenv('KEY')
+        iv_hex = os.getenv('IV')
+        print(f"KEY hex: {key_hex}")
+        print(f"IV hex: {iv_hex}")
+        
+        # Vérifier si KEY et IV sont valides hex
+        valid = True
+        if key_hex is None or iv_hex is None:
+            valid = False
+            print("KEY ou IV manquant dans le fichier .env.")
+        else:
+            try:
+                key = bytes.fromhex(key_hex)
+                iv = bytes.fromhex(iv_hex)
+            except ValueError as e:
+                valid = False
+                print(f"Erreur de conversion hex dans le fichier .env : {e}")
+        
+        if not valid:
+            print("Génération de nouvelles clés et IV car les existantes sont invalides.")
+            key, iv = generate_and_overwrite_env(env_path=dotenv_path)
+        else:
+            print("Clé et IV valides dans le fichier .env.")
+    
+    # Charger les variables d'environnement après éventuelle génération
     load_dotenv(dotenv_path=dotenv_path)
-    print(f"Chargement des variables d'environnement depuis {dotenv_path}")
-
     key_hex = os.getenv('KEY')
     iv_hex = os.getenv('IV')
-    print(f"KEY hex: {key_hex}")
-    print(f"IV hex: {iv_hex}")
-
-    assert key_hex is not None, "La variable KEY n'est pas définie dans le fichier .env."
-    assert iv_hex is not None, "La variable IV n'est pas définie dans le fichier .env."
-
-    try:
-        key = bytes.fromhex(key_hex)
-    except ValueError as e:
-        pytest.fail(f"Erreur de conversion de KEY: {e}")
-
-    try:
-        iv = bytes.fromhex(iv_hex)
-    except ValueError as e:
-        pytest.fail(f"Erreur de conversion de IV: {e}")
-
+    key = bytes.fromhex(key_hex)
+    iv = bytes.fromhex(iv_hex)
+    
     return key, iv
 
 def test_chaotic_system_initialization(setup_env):
