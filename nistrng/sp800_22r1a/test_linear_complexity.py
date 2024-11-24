@@ -17,6 +17,7 @@ import scipy.special
 # Import required src
 
 from nistrng import Test, Result
+from tqdm import tqdm  # Importation de tqdm pour la barre de progression
 
 
 class LinearComplexityTest(Test):
@@ -48,7 +49,7 @@ class LinearComplexityTest(Test):
         """
         Overridden method of Test class: check its docstring for further information.
         """
-        # Reload values is cache is empty or no longer up-to-date
+        # Reload values if cache is empty or no longer up-to-date
         # Otherwise, use cache
         if self._last_bits_size == -1 or self._last_bits_size != bits.size:
             # Set the block size
@@ -58,10 +59,14 @@ class LinearComplexityTest(Test):
             self._blocks_number = blocks_number
         else:
             blocks_number: int = self._blocks_number
+
         # Compute the linear complexity of the blocks
         blocks_linear_complexity: numpy.ndarray = numpy.zeros(blocks_number, dtype=int)
-        for i in range(blocks_number):
+
+        # Ajouter tqdm pour la progression
+        for i in tqdm(range(blocks_number), desc="Calcul de la complexité linéaire"):
             blocks_linear_complexity[i] = self._berlekamp_massey(bits[(i * self._pattern_length):((i + 1) * self._pattern_length)])
+
         # Count the distribution over tickets
         tickets: numpy.ndarray = ((-1.0) ** self._pattern_length) * (blocks_linear_complexity[:] - self._mu) + (2.0 / 9.0)
         # Compute frequencies depending on tickets
@@ -109,16 +114,16 @@ class LinearComplexityTest(Test):
             # Compute discrepancy
             discrepancy = sequence[n]
             for j in range(1, generator_length + 1):
-                discrepancy: int = discrepancy ^ (c[j] & sequence[n - j])
+                discrepancy = discrepancy ^ (c[j] & sequence[n - j])
             # If discrepancy is not zero, adjust polynomial
             if discrepancy != 0:
-                t = c[:]
+                t = c.copy()
                 for j in range(0, sequence.size - n + m):
                     c[n - m + j] = c[n - m + j] ^ b[j]
                 if generator_length <= n / 2:
                     generator_length = n + 1 - generator_length
                     m = n
                     b = t
-            n = n + 1
+            n += 1
         # Return the length of generator
         return generator_length

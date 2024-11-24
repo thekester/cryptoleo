@@ -14,6 +14,7 @@
 import numpy
 import math
 import scipy.special
+from tqdm import tqdm  # Import tqdm
 
 # Import required src
 
@@ -40,7 +41,7 @@ class SerialTest(Test):
         super(SerialTest, self).__init__("Serial", 0.01)
 
     def _execute(self,
-                 bits: numpy.ndarray) -> Result:
+                bits: numpy.ndarray) -> Result:
         """
         Overridden method of Test class: check its docstring for further information.
         """
@@ -86,6 +87,7 @@ class SerialTest(Test):
             for j in range(len(pattern)):
                 if pattern[j] != padded_sequence[i + j]:
                     match = False
+                    break  # Early exit if mismatch found
             if match:
                 count += 1
         return count
@@ -102,8 +104,10 @@ class SerialTest(Test):
         """
         # Count the patterns
         counts: numpy.ndarray = numpy.zeros(2 ** block_size, dtype=int)
-        for i in range(2 ** block_size):
-            pattern: numpy.ndarray = (i >> numpy.arange(block_size, dtype=int)) & 1
+        # Use tqdm to show progress for pattern enumeration
+        for i in tqdm(range(2 ** block_size), desc=f"Counting patterns for block size {block_size}"):
+            # Generate the m-bit pattern as a numpy array of bits
+            pattern: numpy.ndarray = ((i >> numpy.arange(block_size - 1, -1, -1)) & 1).astype(int)
             counts[i] = SerialTest._count_pattern(pattern, padded_sequence, sequence_size)
         # Compute Psi-Squared statistics and return it
         psi_sq_m: float = numpy.sum(counts[:] ** 2)

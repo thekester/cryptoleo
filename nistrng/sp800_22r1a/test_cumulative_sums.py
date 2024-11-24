@@ -19,6 +19,7 @@ import math
 from nistrng import Test, Result
 
 
+
 class CumulativeSumsTest(Test):
     """
     Cumulative sums test as described in NIST paper: https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-22r1a.pdf
@@ -35,35 +36,32 @@ class CumulativeSumsTest(Test):
         # Generate base Test class
         super(CumulativeSumsTest, self).__init__("Cumulative Sums", 0.01)
 
-    def _execute(self,
-                 bits: numpy.ndarray) -> Result:
+    def _execute(self, bits: numpy.ndarray) -> Result:
         """
         Overridden method of Test class: check its docstring for further information.
         """
-        # Copy the bits to a new array
-        bits_copy: numpy.ndarray = bits.copy()
-        # Convert all the zeros in the array to -1
+        # Convert bits to a signed integer type and replace 0 with -1
+        bits_copy: numpy.ndarray = bits.astype(numpy.int64).copy()
         bits_copy[bits_copy == 0] = -1
-        # Compute the partial sum with forward (mode 0) and backward (mode 1) modes and record the largest excursion
-        forward_sum: int = 0
-        backward_sum: int = 0
-        forward_max: int = 0
-        backward_max: int = 0
-        for i in range(bits_copy.size):
-            forward_sum += bits_copy[i]
-            backward_sum += bits_copy[bits_copy.size - 1 - i]
-            forward_max = max(abs(forward_sum), forward_max)
-            backward_max = max(abs(backward_sum), backward_max)
+
+        # Compute forward cumulative sums
+        forward_cumsum = numpy.cumsum(bits_copy)
+        forward_max = numpy.max(numpy.abs(forward_cumsum))
+
+        # Compute backward cumulative sums
+        backward_cumsum = numpy.cumsum(bits_copy[::-1])
+        backward_max = numpy.max(numpy.abs(backward_cumsum))
+
         # Compute the scores (P-Values)
         score_1: float = self._compute_p_value(bits_copy.size, forward_max)
         score_2: float = self._compute_p_value(bits_copy.size, backward_max)
-        # Return result
+
+        # Return result based on significance values
         if score_1 >= self.significance_value and score_2 >= self.significance_value:
             return Result(self.name, True, numpy.array([score_1, score_2]))
         return Result(self.name, False, numpy.array([score_1, score_2]))
 
-    def is_eligible(self,
-                    bits: numpy.ndarray) -> bool:
+    def is_eligible(self, bits: numpy.ndarray) -> bool:
         """
         Overridden method of Test class: check its docstring for further information.
         """
