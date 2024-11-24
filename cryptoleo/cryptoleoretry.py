@@ -27,13 +27,14 @@ class ChaoticSystem:
         self.state_h = int.from_bytes(iv_hash[40:48], 'big') % (1 << 64)
         print(f"ChaoticSystem initialisé avec les états : a={self.state_a}, b={self.state_b}, c={self.state_c}, d={self.state_d}, e={self.state_e}, f={self.state_f}, g={self.state_g}, h={self.state_h}")
         self.boost_entropy()
-        # Générer une clé supplémentaire pour HMAC
-        self.mixer_key = secrets.token_bytes(32)  # 256 bits
+        # Générer une clé supplémentaire pour HMAC de manière déterministe
+        self.mixer_key = hmac.new(self.key, self.iv, sha256).digest()  # 256 bits, déterministe
         print(f"Mixer key générée : {self.mixer_key.hex()}")
 
     def boost_entropy(self):
-        additional_entropy = secrets.token_bytes(32)  # Augmentation de l'entropie
-        mixed_entropy = sha3_512(additional_entropy).digest()
+        # Utiliser une source d'entropie déterministe basée sur la clé et l'IV
+        entropy_source = hmac.new(self.key, b'boost_entropy', sha256).digest()
+        mixed_entropy = sha3_512(entropy_source).digest()
         self.state_a ^= int.from_bytes(mixed_entropy[:8], 'big') & 0xFFFFFFFFFFFFFFFF
         self.state_b ^= int.from_bytes(mixed_entropy[8:16], 'big') & 0xFFFFFFFFFFFFFFFF
         self.state_c ^= int.from_bytes(mixed_entropy[16:24], 'big') & 0xFFFFFFFFFFFFFFFF
@@ -42,7 +43,7 @@ class ChaoticSystem:
         self.state_f ^= int.from_bytes(mixed_entropy[40:48], 'big') & 0xFFFFFFFFFFFFFFFF
         self.state_g ^= int.from_bytes(mixed_entropy[48:56], 'big') & 0xFFFFFFFFFFFFFFFF
         self.state_h ^= int.from_bytes(mixed_entropy[56:64], 'big') & 0xFFFFFFFFFFFFFFFF
-        print("Entropie boostée.")
+        print("Entropie boostée de manière déterministe.")
 
     def lorenz_map(self, x, y, z, sigma=10.0, rho=28.0, beta=8/3):
         dx = sigma * (y - x)
