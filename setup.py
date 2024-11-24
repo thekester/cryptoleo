@@ -8,7 +8,8 @@ setup(
         'python-dotenv',
         'numpy',
         'scipy',
-        'tqdm'
+        'tqdm',
+        'pycryptodome'
     ],
     extras_require={
         'dev': [
