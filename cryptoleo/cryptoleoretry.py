@@ -408,7 +408,7 @@ class CNN_Duplex:
         print("Vérification du tag réussie.")
         return plaintext
 
-def generate_and_overwrite_env():
+def generate_and_overwrite_env(env_path='.env'):
     """
     Génère des clés et IV sécurisés et les écrit dans le fichier .env, écrasant tout contenu existant.
     """
@@ -417,9 +417,6 @@ def generate_and_overwrite_env():
     iv = secrets.token_bytes(16)   # 128 bits
     print(f"Clé générée : {key.hex()}")
     print(f"IV généré : {iv.hex()}")
-    
-    # Définir les chemins
-    env_path = '.env'
     
     # Écrire ou écraser les clés dans .env
     set_key(env_path, 'KEY', key.hex())
@@ -432,19 +429,19 @@ def generate_and_overwrite_env():
 if __name__ == "__main__":
     # Générer de nouvelles clés et IV, écrasant les anciens dans .env
     key, iv = generate_and_overwrite_env()
-
+    
     # Initialiser le schéma de chiffrement avec les nouvelles clés
     cnn_duplex_enc = CNN_Duplex(key, iv)
-
+    
     # Générer un keystream de 1 Mo et le sauvegarder dans 'keystream.bin'
     keystream_length = 1 * 1024 * 1024  # 1 mégaoctet
     if os.path.exists('keystream.bin'):
         os.remove('keystream.bin')
-
+    
     print("Génération du keystream...")
     keystream = cnn_duplex_enc.squeeze(keystream_length, save_keystream=True)
     print("Keystream généré et sauvegardé dans 'keystream.bin'")
-
+    
     # Exemple de chiffrement
     message = "Message secret à chiffrer.".encode('utf-8')
     associated_data = "Données associées non chiffrées.".encode('utf-8')
@@ -452,10 +449,10 @@ if __name__ == "__main__":
     ciphertext, tag = cnn_duplex_enc.encrypt(message, associated_data)
     print(f"Ciphertext : {ciphertext.hex()}")
     print(f"Tag : {tag.hex()}")
-
+    
     # Initialiser une nouvelle instance pour le déchiffrement
     cnn_duplex_dec = CNN_Duplex(key, iv)
-
+    
     # Exemple de déchiffrement
     print("\n--- Déchiffrement ---")
     try:
