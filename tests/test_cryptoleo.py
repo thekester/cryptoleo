@@ -8,48 +8,55 @@ from pathlib import Path
 def setup_env():
     """
     Fixture pour charger les variables d'environnement KEY et IV et les convertir en bytes.
-    Si le fichier .env n'existe pas ou contient des valeurs invalides, génère un nouveau fichier .env.
+    Si les variables d'environnement ne sont pas définies ou sont invalides, 
+    charge les valeurs depuis le fichier .env ou génère un nouveau fichier .env.
     """
-    dotenv_path = Path(__file__).resolve().parent.parent / 'cryptoleo' / '.env'
-    
-    # Vérifier si le fichier .env existe
-    if not dotenv_path.exists():
-        print(f"Fichier .env non trouvé à {dotenv_path}. Génération d'un nouveau fichier .env.")
-        key, iv = generate_and_overwrite_env(env_path=dotenv_path)
-    else:
-        load_dotenv(dotenv_path=dotenv_path)
-        print(f"Chargement des variables d'environnement depuis {dotenv_path}")
-        
-        key_hex = os.getenv('KEY')
-        iv_hex = os.getenv('IV')
-        print(f"KEY hex: {key_hex}")
-        print(f"IV hex: {iv_hex}")
-        
-        # Vérifier si KEY et IV sont valides hex
-        valid = True
-        if key_hex is None or iv_hex is None:
-            valid = False
-            print("KEY ou IV manquant dans le fichier .env.")
-        else:
-            try:
-                key = bytes.fromhex(key_hex)
-                iv = bytes.fromhex(iv_hex)
-            except ValueError as e:
-                valid = False
-                print(f"Erreur de conversion hex dans le fichier .env : {e}")
-        
-        if not valid:
-            print("Génération de nouvelles clés et IV car les existantes sont invalides.")
-            key, iv = generate_and_overwrite_env(env_path=dotenv_path)
-        else:
-            print("Clé et IV valides dans le fichier .env.")
-    
-    # Charger les variables d'environnement après éventuelle génération
-    load_dotenv(dotenv_path=dotenv_path)
+    # Tenter de récupérer KEY et IV depuis les variables d'environnement
     key_hex = os.getenv('KEY')
     iv_hex = os.getenv('IV')
-    key = bytes.fromhex(key_hex)
-    iv = bytes.fromhex(iv_hex)
+    
+    valid_env = True
+    if key_hex is None or iv_hex is None:
+        valid_env = False
+        print("Variables d'environnement KEY ou IV manquantes.")
+    else:
+        try:
+            key = bytes.fromhex(key_hex)
+            iv = bytes.fromhex(iv_hex)
+        except ValueError as e:
+            valid_env = False
+            print(f"Erreur de conversion hex des variables d'environnement : {e}")
+    
+    # Si les variables d'environnement sont invalides, tenter de charger depuis .env
+    if not valid_env:
+        dotenv_path = Path(__file__).resolve().parent.parent / 'cryptoleo' / '.env'
+        
+        if dotenv_path.exists():
+            load_dotenv(dotenv_path=dotenv_path)
+            key_hex = os.getenv('KEY')
+            iv_hex = os.getenv('IV')
+            print(f"Chargement des variables d'environnement depuis {dotenv_path}")
+            
+            # Vérifier à nouveau la validité
+            if key_hex is None or iv_hex is None:
+                print("KEY ou IV manquant dans le fichier .env.")
+                valid_env = False
+            else:
+                try:
+                    key = bytes.fromhex(key_hex)
+                    iv = bytes.fromhex(iv_hex)
+                except ValueError as e:
+                    print(f"Erreur de conversion hex dans le fichier .env : {e}")
+                    valid_env = False
+        else:
+            print(f"Fichier .env non trouvé à {dotenv_path}.")
+        
+    # Si toujours invalide, générer un nouveau .env
+    if not valid_env:
+        print("Génération de nouvelles clés et IV.")
+        key, iv = generate_and_overwrite_env(env_path=Path(__file__).resolve().parent.parent / 'cryptoleo' / '.env')
+    else:
+        print("Clé et IV valides obtenues.")
     
     return key, iv
 
