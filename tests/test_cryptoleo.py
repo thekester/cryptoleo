@@ -7,8 +7,7 @@ import sys
 print("PYTHONPATH:", sys.path)
 print("Current Directory:", os.getcwd())
 
-
-# Charger les variables d'environnement depuis le fichier .env
+# Load environment variables from .env file
 load_dotenv()
 
 def test_chaotic_system_initialization():
@@ -67,11 +66,11 @@ def test_cnn_duplex_encryption_decryption():
     key = os.getenv('KEY').encode('utf-8')
     iv = os.getenv('IV').encode('utf-8')
     cnn_duplex = CNN_Duplex(key, iv)
-    associated_data = "Informations d'en-tête".encode('utf-8')
-    plaintext = "Message confidentiel à chiffrer.".encode('utf-8')
+    associated_data = "Header Information".encode('utf-8')
+    plaintext = "Confidential message to encrypt.".encode('utf-8')
     ciphertext, tag = cnn_duplex.encrypt(plaintext, associated_data)
 
-    # Réinitialiser l'état pour le déchiffrement
+    # Initialize a new CNN_Duplex instance for decryption with the same key and IV
     cnn_duplex_dec = CNN_Duplex(key, iv)
     decrypted_plaintext = cnn_duplex_dec.decrypt(ciphertext, associated_data, tag)
 

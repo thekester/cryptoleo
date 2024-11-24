@@ -1,13 +1,25 @@
+# Copyright (C) 2019 Luca Pasqualini
+# University of Siena - Artificial Intelligence Laboratory - SAILab
+#
+# Inspired by the work of David Johnston (C) 2017: https://github.com/dj-on-github/sp800_22_tests
+#
+# NistRng is licensed under a BSD 3-Clause.
+#
+# You should have received a copy of the license along with this
+# work. If not, see <https://opensource.org/licenses/BSD-3-Clause>.
+
+# Import packages
+
 import numpy as np
 from hashlib import sha256
 from dotenv import load_dotenv
 import os
-from tqdm import tqdm  # Importation de tqdm pour la barre de progression
+from tqdm import tqdm  # Importation of tqdm for the progress bar
 
 class ChaoticSystem:
     def __init__(self, key):
         self.key = key
-        # Initialisation de l'état avec un haché de la clé
+        # Initialize state with a hash of the key
         self.state = int.from_bytes(sha256(key).digest(), 'big') % (2**32)
         print(f"ChaoticSystem initialized with state: {self.state}")
 
@@ -22,7 +34,7 @@ class ChaoticSystem:
         else:
             result = 0
         # print(f"skew_tent_map: x={x}, q={q}, result={result}")
-        return result % (2**32)  # Limiter la taille du résultat
+        return result % (2**32)  # Limit the size of the result
 
     def dpwlcm_map(self, x, q):
         N = 32
@@ -37,30 +49,30 @@ class ChaoticSystem:
         else:
             result = 2**N - 1 - q
         # print(f"dpwlcm_map: x={x}, q={q}, result={result}")
-        return result % (2**32)  # Limiter la taille du résultat
+        return result % (2**32)  # Limit the size of the result
 
     def generate_keystream(self, length):
         keystream = []
         x = self.state
-        # Extraction des paramètres q1 et q2 à partir de la clé
+        # Extract q1 and q2 parameters from the key
         q1 = (int.from_bytes(self.key[:4], 'big') % (2**32 - 1)) + 1
         q2 = (int.from_bytes(self.key[4:8], 'big') % (2**32 - 1)) + 1
         print(f"Generating keystream with q1={q1}, q2={q2}")
-        # Afficher la barre de progression si la longueur est significative
+        # Display the progress bar if the length is significant
         if length >= 1000:
-            iterator = tqdm(range(length), desc="Génération du keystream ChaoticSystem")
+            iterator = tqdm(range(length), desc="Generating ChaoticSystem keystream")
         else:
             iterator = range(length)
         for i in iterator:
-            # Application des fonctions chaotiques
+            # Apply chaotic functions
             x = self.skew_tent_map(x, q1)
             x = self.dpwlcm_map(x, q2)
             keystream_value = x & 0xFFFFFFFF
             keystream.append(keystream_value)
-            # Vous pouvez décommenter la ligne suivante pour afficher des informations périodiques
+            # You can uncomment the following line to display periodic information
             # if i % 100000 == 0:
             #     print(f"Keystream[{i}] = {keystream_value}")
-        self.state = x  # Mise à jour de l'état interne
+        self.state = x  # Update the internal state
         print(f"ChaoticSystem state updated to: {self.state}")
         return keystream
 
@@ -68,7 +80,7 @@ class ChaoticNeuralNetwork:
     def __init__(self, key):
         print("Initializing Chaotic Neural Network...")
         self.chaotic_system = ChaoticSystem(key)
-        # Génération des poids et des biais pour le réseau de neurones
+        # Generate weights and biases for the neural network
         self.input_weights = self.chaotic_system.generate_keystream(16)
         print(f"Input weights: {self.input_weights}")
         self.output_weights = self.chaotic_system.generate_keystream(4)
@@ -99,7 +111,7 @@ class ChaoticNeuralNetwork:
             q1 = self.q_parameters[(i // 4) % 4]
             q2 = self.q_parameters[((i // 4) % 4) + 4]
             bias = self.biases[(i // 4) % 4]
-            # Limiter les poids pour éviter les nombres trop grands
+            # Limit weights to avoid too large numbers
             weighted_inputs = [((inp * w) % (2**32)) for inp, w in zip(inputs, self.input_weights[i:i+4])]
             print(f"Weighted inputs: {weighted_inputs}")
             neuron_output = self.activation_function(weighted_inputs, q1, q2, bias)
@@ -145,7 +157,7 @@ class CNN_Duplex:
         output = b''
         state_length = len(self.state)
         total_blocks = (length + state_length - 1) // state_length
-        with tqdm(total=total_blocks, desc="Génération du keystream CNN_Duplex") as pbar:
+        with tqdm(total=total_blocks, desc="Generating CNN_Duplex keystream") as pbar:
             while len(output) < length:
                 state_ints = [int.from_bytes(self.state[i:i+4], 'big') for i in range(0, len(self.state), 4)]
                 print(f"State ints: {state_ints}")
@@ -177,35 +189,94 @@ class CNN_Duplex:
         new_state = b''.join([int.to_bytes(word, 4, 'big') for word in new_state_ints])
         return new_state
 
-# Exemple d'utilisation
+    def encrypt(self, plaintext, associated_data):
+        """
+        Encrypt the plaintext with associated data.
+
+        :param plaintext: The data to encrypt (bytes)
+        :param associated_data: The associated data (bytes)
+        :return: Tuple containing ciphertext and tag
+        """
+        print("Starting encryption...")
+        # Absorb associated data only
+        self.absorb(associated_data)
+        
+        # Generate keystream
+        keystream = self.squeeze(len(plaintext))
+        print(f"Generated keystream of length {len(keystream)}")
+        
+        # Perform XOR between plaintext and keystream to get ciphertext
+        ciphertext = bytes([p ^ k for p, k in zip(plaintext, keystream)])
+        print(f"Ciphertext: {ciphertext}")
+        
+        # Generate a simple tag (e.g., SHA-256 hash of ciphertext and associated data)
+        tag_input = ciphertext + associated_data
+        tag = sha256(tag_input).digest()[:16]  # Using first 16 bytes as tag
+        print(f"Generated tag: {tag}")
+        
+        return ciphertext, tag
+
+    def decrypt(self, ciphertext, associated_data, tag):
+        """
+        Decrypt the ciphertext with associated data and verify the tag.
+
+        :param ciphertext: The data to decrypt (bytes)
+        :param associated_data: The associated data (bytes)
+        :param tag: The authentication tag (bytes)
+        :return: Decrypted plaintext (bytes)
+        :raises ValueError: If tag verification fails
+        """
+        print("Starting decryption...")
+        # Absorb associated data only
+        self.absorb(associated_data)
+        
+        # Generate keystream
+        keystream = self.squeeze(len(ciphertext))
+        print(f"Generated keystream of length {len(keystream)}")
+        
+        # Perform XOR between ciphertext and keystream to get plaintext
+        plaintext = bytes([c ^ k for c, k in zip(ciphertext, keystream)])
+        print(f"Decrypted plaintext: {plaintext}")
+        
+        # Verify tag
+        tag_input = ciphertext + associated_data
+        expected_tag = sha256(tag_input).digest()[:16]
+        print(f"Expected tag: {expected_tag}")
+        if tag != expected_tag:
+            raise ValueError("Invalid authentication tag!")
+        print("Tag verification successful.")
+        
+        return plaintext
+
+# Example usage
 if __name__ == "__main__":
-    # Importer dotenv pour charger les variables d'environnement
+    # Import dotenv to load environment variables
     from dotenv import load_dotenv
     import os
 
-    # Charger les variables d'environnement depuis le fichier .env
+    # Load environment variables from .env file
     load_dotenv()
 
-    # Clé secrète de 16 octets (128 bits) chargée depuis .env
+    # Secret key of 16 bytes (128 bits) loaded from .env
     key_env = os.getenv('KEY')
     iv_env = os.getenv('IV')
 
     if key_env is None or iv_env is None:
-        raise ValueError("La clé ou l'IV n'a pas été trouvé dans le fichier .env")
+        raise ValueError("Key or IV not found in the .env file")
 
     key = key_env.encode('utf-8')
     iv = iv_env.encode('utf-8')
 
-    # Initialisation du schéma de chiffrement
+    # Initialize the encryption scheme
     cnn_duplex = CNN_Duplex(key, iv)
 
-    # Générer un keystream de 1 Mo et le sauvegarder dans 'keystream.bin'
-    keystream_length = 1 * 1024 * 1024  # 1 mégaoctet
-    # Avant de générer, on s'assure que le fichier 'keystream.bin' est vide ou le supprime s'il existe
+    # Generate a 1MB keystream and save it to 'keystream.bin'
+    keystream_length = 1 * 1024 * 1024  # 1 megabyte
+    # Before generating, ensure that 'keystream.bin' is empty or delete it if it exists
     if os.path.exists('keystream.bin'):
         os.remove('keystream.bin')
 
-    print("Génération du keystream...")
-    # Le keystream est généré via la méthode squeeze de CNN_Duplex
+    print("Generating keystream...")
+    # The keystream is generated via the squeeze method of CNN_Duplex
     cnn_duplex.squeeze(keystream_length, save_keystream=True)
     print("Keystream generated and saved to 'keystream.bin'")
