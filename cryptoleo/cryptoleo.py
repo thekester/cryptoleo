@@ -1,26 +1,26 @@
 import math
 
 # Padding Function
-def pad_message_injective(block, r):
+def pad_message_injective(block, desired_length):
     """
-    Applies injective padding to the input block to make its length equal to r.
+    Applies injective padding to the input block to make its length equal to desired_length.
 
     Parameters:
     - block (bytes): The input block to be padded.
-    - r (int): The desired block length after padding.
+    - desired_length (int): The desired block length after padding.
 
     Returns:
     - bytes: The padded block.
 
     Padding Scheme:
-    - If the block is shorter than r, append a 0x80 byte followed by zeros.
-    - If the block is exactly length r, return it unchanged.
-    - If the block is longer than r, raise an error.
+    - If the block is shorter than desired_length, append a 0x80 byte followed by zeros.
+    - If the block is exactly length desired_length, return it unchanged.
+    - If the block is longer than desired_length, raise an error.
     """
     block_length = len(block)
-    if block_length == r:
+    if block_length == desired_length:
         return block  # No padding needed
-    padding_length = r - block_length
+    padding_length = desired_length - block_length
     if padding_length < 1:
         raise ValueError("Block is too large for the injective padding scheme.")
     # Create padding: start with 0x80, then zeros
@@ -30,7 +30,7 @@ def pad_message_injective(block, r):
 # Divide Message into Blocks
 def divide_message(message, r):
     """
-    Divides the message into blocks of length up to r - 2 bytes, marking each block
+    Divides the message into blocks of length up to r - 1 bytes, marking each block
     with a flag indicating whether it's the last block.
 
     Parameters:
@@ -40,9 +40,9 @@ def divide_message(message, r):
     Returns:
     - List[Tuple[bytes, int]]: A list of tuples where each tuple contains:
         - block (bytes): A segment of the message.
-        - is_last (int): A flag (1 if it's not the last block, 0 if it is).
+        - is_last (int): A flag (0 if it's the last block, 1 if not).
     """
-    block_size = r - 2  # Reserve 2 bytes for flags or padding
+    block_size = r - 1  # Reserve 1 byte for flag
     num_blocks = math.ceil(len(message) / block_size)
     blocks = []
     for i in range(num_blocks):
@@ -352,13 +352,14 @@ def initialize(k, iv, cf):
     return cf(k, iv)
 
 # Duplexing Phase
-def duplexing(hm, s, pad_func, cf, r, b, k):
+def duplexing(hm, s, bf, pad_func, cf, r, b, k):
     """
     Performs the duplexing operation to update the state with input data.
 
     Parameters:
     - hm (bytes): Current state.
     - s (bytes): Input data.
+    - bf (int): Flag indicating whether more data follows (1) or not (0).
     - pad_func (function): Function to pad input data.
     - cf (function): Compression function.
     - r (int): Rate parameter.
@@ -368,10 +369,12 @@ def duplexing(hm, s, pad_func, cf, r, b, k):
     Returns:
     - bytes: Updated state after duplexing.
     """
-    # Pad input data
-    padded_input = pad_func(s, r)
-    # XOR padded input with first 'r' bytes of the state
-    h = bytes([hm[i] ^ padded_input[i] for i in range(r)]) + hm[r:]
+    # Pad input data to length r - 1
+    padded_input = pad_func(s, r - 1)
+    # Append the flag byte to reach length r
+    s_with_flag = padded_input + bytes([bf])
+    # XOR with the first 'r' bytes of hm
+    h = bytes([hm[i] ^ s_with_flag[i] for i in range(r)]) + hm[r:]
     # Update state using compression function
     hm = cf(k, h)
     return hm
@@ -397,8 +400,7 @@ def encrypt(k, iv, ad, m, cf, r, b):
     hm = initialize(k, iv, cf)
     # Absorb associated data
     for block, bf in divide_message(ad, r):
-        block_with_flag = block + bytes([bf])
-        hm = duplexing(hm, block_with_flag, pad_message_injective, cf, r, b, k)
+        hm = duplexing(hm, block, bf, pad_message_injective, cf, r, b, k)
     # Encrypt message
     c = b""
     for block, bf in divide_message(m, r):
@@ -406,10 +408,9 @@ def encrypt(k, iv, ad, m, cf, r, b):
         c_block = bytes([block[j] ^ hm[j] for j in range(len(block))])
         c += c_block
         # Update state using ciphertext block
-        block_with_flag = c_block + bytes([bf])
-        hm = duplexing(hm, block_with_flag, pad_message_injective, cf, r, b, k)
-    # Final duplexing with zero block to generate tag
-    hm = duplexing(hm, b'\x00' * r, pad_message_injective, cf, r, b, k)
+        hm = duplexing(hm, c_block, bf, pad_message_injective, cf, r, b, k)
+    # Final duplexing with empty block and flag 0 to generate tag
+    hm = duplexing(hm, b'', 0, pad_message_injective, cf, r, b, k)
     tag = hm[:r]  # Extract authentication tag
     return c, tag
 
@@ -435,44 +436,79 @@ def decrypt(k, iv, ad, c, t, cf, r, b):
     hm = initialize(k, iv, cf)
     # Absorb associated data
     for block, bf in divide_message(ad, r):
-        block_with_flag = block + bytes([bf])
-        hm = duplexing(hm, block_with_flag, pad_message_injective, cf, r, b, k)
+        hm = duplexing(hm, block, bf, pad_message_injective, cf, r, b, k)
     # Decrypt ciphertext
     m = b""
     for block, bf in divide_message(c, r):
         # Update state using ciphertext block
-        block_with_flag = block + bytes([bf])
-        hm = duplexing(hm, block_with_flag, pad_message_injective, cf, r, b, k)
+        hm = duplexing(hm, block, bf, pad_message_injective, cf, r, b, k)
         # Generate plaintext block
         m_block = bytes([block[j] ^ hm[j] for j in range(len(block))])
         m += m_block
-    # Final duplexing with zero block for tag verification
-    hm = duplexing(hm, b'\x00' * r, pad_message_injective, cf, r, b, k)
+    # Final duplexing with empty block and flag 0 for tag verification
+    hm = duplexing(hm, b'', 0, pad_message_injective, cf, r, b, k)
     # Verify authentication tag
     if t != hm[:len(t)]:
         return None, "Error: Authentication Failed"
     return m, "Success"
 
+def generate_keystream(k, iv, length, cf, r, b):
+    """
+    Generates a keystream of the specified length.
+
+    Parameters:
+    - k (bytes): Secret key.
+    - iv (bytes): Initialization vector.
+    - length (int): The number of bytes to generate.
+    - cf (function): Compression function.
+    - r (int): Rate parameter.
+    - b (int): Block size.
+
+    Returns:
+    - bytes: The generated keystream.
+    """
+    hm = initialize(k, iv, cf)
+    keystream = b''
+
+    while len(keystream) < length:
+        # Extract 'r' bytes from the state as keystream
+        ks_part = hm[:r]
+        keystream += ks_part
+        # Update the state with an empty input and flag 0
+        hm = duplexing(hm, b'', 0, pad_message_injective, cf, r, b, k)
+    return keystream[:length]
+
 # Example Parameters
-# Rate and Block sizes
-r, b = 32, 64  # 'r' is the rate, 'b' is the capacity of the duplex construction
+if __name__ == "__main__":
+    # Rate and Block sizes
+    r, b = 32, 64  # 'r' is the rate, 'b' is the capacity of the duplex construction
 
-# Secret key and Initialization Vector
-k = b'\x01' * 16  # Secret key of 16 bytes (128 bits)
-iv = b'\x00' * (r + b)  # Initialization vector, length depends on 'r' and 'b'
+    # Secret key and Initialization Vector
+    k = b'\x01' * 16  # Secret key of 16 bytes (128 bits)
+    iv = b'\x00' * (r + b)  # Initialization vector, length depends on 'r' and 'b'
 
-# Associated Data and Message
-ad = b"Associated Data"  # Data to be authenticated but not encrypted
-m = b"Message to encrypt"  # Plaintext message to be encrypted
+    # Associated Data and Message
+    ad = b"Associated Data"  # Data to be authenticated but not encrypted
+    m = b"Message to encrypt"  # Plaintext message to be encrypted
 
-# Perform encryption
-ciphertext, tag = encrypt(k, iv, ad, m, chaotic_compression, r, b)
+    # Perform encryption
+    ciphertext, tag = encrypt(k, iv, ad, m, chaotic_compression, r, b)
 
-# Perform decryption
-message, status = decrypt(k, iv, ad, ciphertext, tag, chaotic_compression, r, b)
+    # Perform decryption
+    message, status = decrypt(k, iv, ad, ciphertext, tag, chaotic_compression, r, b)
 
-# Output the results
-print("Ciphertext:", ciphertext)
-print("Tag:", tag)
-print("Decrypted Message:", message)
-print("Status:", status)
+    # Output the results
+    print("Ciphertext:", ciphertext)
+    print("Tag:", tag)
+    print("Decrypted Message:", message)
+    print("Status:", status)
+
+    # Generate a keystream of desired length, e.g., 1 MB
+    keystream_length = 1024 * 1024  # 1 MB
+    keystream = generate_keystream(k, iv, keystream_length, chaotic_compression, r, b)
+
+    # Save the keystream to a file
+    with open('keystream.bin', 'wb') as f:
+        f.write(keystream)
+
+    print("Keystream generated and saved to 'keystream.bin'.")
