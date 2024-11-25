@@ -9,7 +9,8 @@ setup(
         'numpy',
         'scipy',
         'tqdm',
-        'pycryptodome'
+        'pycryptodome',
+        'math'
     ],
     extras_require={
         'dev': [

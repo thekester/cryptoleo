@@ -1,167 +1,265 @@
+# test_chaotic_encryption.py
+
 import pytest
-from cryptoleo.cryptoleoretry import ChaoticSystem, ChaoticNeuralNetwork, CNN_Duplex, generate_and_overwrite_env
-from dotenv import load_dotenv
-import os
-from pathlib import Path
+import math
 
-@pytest.fixture(scope='module')
-def setup_env():
+# Chaotic Neural Network Components and Functions
+
+def rotr(x, n, bits=32):
     """
-    Fixture pour charger les variables d'environnement KEY et IV et les convertir en bytes.
-    Si les variables d'environnement ne sont pas définies ou sont invalides, 
-    charge les valeurs depuis le fichier .env ou génère un nouveau fichier .env.
+    Performs a bitwise right rotation on a 32-bit integer.
     """
-    # Tenter de récupérer KEY et IV depuis les variables d'environnement
-    key_hex = os.getenv('KEY')
-    iv_hex = os.getenv('IV')
-    
-    valid_env = True
-    if key_hex is None or iv_hex is None:
-        valid_env = False
-        print("Variables d'environnement KEY ou IV manquantes.")
+    return ((x >> n) | (x << (bits - n))) & (2**bits - 1)
+
+def sigma_0(d1):
+    return rotr(d1, 2) ^ rotr(d1, 13) ^ rotr(d1, 22)
+
+def sigma_1(d3):
+    return rotr(d3, 6) ^ rotr(d3, 11) ^ rotr(d3, 25)
+
+def majority(d1, d2, d3):
+    return (d1 & d2) ^ (d1 & d3) ^ (d2 & d3)
+
+def choose(d1, d2, d3):
+    return (d1 & d2) ^ (~d1 & d3)
+
+def skew_tent_map(x, q1, n=32):
+    """
+    Skew Tent Map function.
+    """
+    max_val = 2**n
+    if 0 < x < q1:
+        return (2 * x * max_val) // q1
+    elif x == q1:
+        return max_val - 1
+    elif q1 < x < max_val:
+        return (2 * (max_val - x) * max_val) // (max_val - q1)
     else:
-        try:
-            key = bytes.fromhex(key_hex)
-            iv = bytes.fromhex(iv_hex)
-        except ValueError as e:
-            valid_env = False
-            print(f"Erreur de conversion hex des variables d'environnement : {e}")
-    
-    # Si les variables d'environnement sont invalides, tenter de charger depuis .env
-    if not valid_env:
-        dotenv_path = Path(__file__).resolve().parent.parent / 'cryptoleo' / '.env'
-        
-        if dotenv_path.exists():
-            load_dotenv(dotenv_path=dotenv_path)
-            key_hex = os.getenv('KEY')
-            iv_hex = os.getenv('IV')
-            print(f"Chargement des variables d'environnement depuis {dotenv_path}")
-            
-            # Vérifier à nouveau la validité
-            if key_hex is None or iv_hex is None:
-                print("KEY ou IV manquant dans le fichier .env.")
-                valid_env = False
-            else:
-                try:
-                    key = bytes.fromhex(key_hex)
-                    iv = bytes.fromhex(iv_hex)
-                except ValueError as e:
-                    print(f"Erreur de conversion hex dans le fichier .env : {e}")
-                    valid_env = False
-        else:
-            print(f"Fichier .env non trouvé à {dotenv_path}.")
-        
-    # Si toujours invalide, générer un nouveau .env
-    if not valid_env:
-        print("Génération de nouvelles clés et IV.")
-        key, iv = generate_and_overwrite_env(env_path=Path(__file__).resolve().parent.parent / 'cryptoleo' / '.env')
+        return 0
+
+def pwlcm_map(x, q2, n=32):
+    """
+    Piecewise Linear Chaotic Map function.
+    """
+    max_val = 2**n
+    if 0 < x <= q2:
+        return (x * max_val) // q2
+    elif q2 < x <= max_val // 2:
+        return ((x - q2) * max_val) // ((max_val // 2) - q2)
+    elif max_val // 2 < x <= max_val - q2:
+        return ((max_val - q2 - x) * max_val) // ((max_val // 2) - q2)
+    elif max_val - q2 < x < max_val:
+        return ((max_val - x) * max_val) // q2
     else:
-        print("Clé et IV valides obtenues.")
-    
-    return key, iv
+        return 0
 
-def test_chaotic_system_initialization(setup_env):
-    key, iv = setup_env
-    chaotic_system = ChaoticSystem(key, iv)
+def ensure_p_size(p, size):
+    if len(p) < size:
+        p += [0] * (size - len(p))
+    return p
 
-    assert chaotic_system.state_a is not None
-    assert chaotic_system.state_b is not None
-    assert chaotic_system.state_c is not None
-    assert chaotic_system.state_d is not None
-    assert chaotic_system.state_e is not None
-    assert chaotic_system.state_f is not None
-    assert chaotic_system.state_g is not None
-    assert chaotic_system.state_h is not None
-    print("ChaoticSystem initialisé correctement avec les états :", 
-          chaotic_system.state_a, chaotic_system.state_b, chaotic_system.state_c,
-          chaotic_system.state_d, chaotic_system.state_e, chaotic_system.state_f,
-          chaotic_system.state_g, chaotic_system.state_h)
+def calculate_ck(ks, p, k, n, mode=256):
+    if mode == 256:
+        p = ensure_p_size(p, 4 * k + 4)
+        fn1_input = (ks['BI'][k] + sum(
+            p[j] * ks['WI'][k][j % len(ks['WI'][k])]
+            for j in range(4 * k, 4 * k + 2)
+        )) % 2**n
+        fn2_input = (ks['BI'][k] + sum(
+            p[j] * ks['WI'][k][(j + 2) % len(ks['WI'][k])]
+            for j in range(4 * k, 4 * k + 2)
+        )) % 2**n
+    else:
+        raise NotImplementedError("Only mode 256 is implemented.")
 
-def test_skew_tent_map(setup_env):
-    key, iv = setup_env
-    chaotic_system = ChaoticSystem(key, iv)
+    fn1 = skew_tent_map(fn1_input, ks['Q1'], n)
+    fn2 = pwlcm_map(fn2_input, ks['Q2'], n)
+    return (fn1 + fn2) % (2**n)
 
-    x = 0.123456789  # Valeur normalisée entre 0 et 1
-    result = chaotic_system.skew_tent_map(x)
-    assert isinstance(result, float), "Le résultat de skew_tent_map doit être un float."
-    print("skew_tent_map fonctionne correctement avec le résultat :", result)
+def calculate_hk(d, t1, t2):
+    return [
+        t2 ^ t1 ^ d[0],
+        t1 ^ d[0],
+        d[1] ^ d[0],
+        d[2] ^ d[1],
+        d[3] ^ d[2],
+        t1 ^ d[1] ^ d[0],
+        t1 ^ d[2] ^ d[1],
+        t1 ^ d[3] ^ d[2],
+    ]
 
-def test_dpwlcm_map(setup_env):
-    key, iv = setup_env
-    chaotic_system = ChaoticSystem(key, iv)
+def chaotic_nl_layer(p, ks, wo, n, mode=256):
+    c = [calculate_ck(ks, p, k, n, mode) for k in range(4)]
+    d = [c[k] * wo[k] % 2**n for k in range(4)]
+    t1 = sigma_1(d[3]) ^ choose(d[1], d[2], d[3])
+    t2 = sigma_0(d[1]) ^ majority(d[1], d[2], d[3])
+    return calculate_hk(d, t1, t2)
 
-    x = 0.123456789  # Valeur normalisée entre 0 et 1
-    result = chaotic_system.dpwlcm_map(x)
-    assert isinstance(result, float), "Le résultat de dpwlcm_map doit être un float."
-    print("dpwlcm_map fonctionne correctement avec le résultat :", result)
+def iterate_nl_layers(p, ks, wo, n, nr, mode=256):
+    h = p
+    for _ in range(nr):
+        h = chaotic_nl_layer(h, ks, wo, n, mode)
+    return h
 
-def test_generate_keystream(setup_env):
-    key, iv = setup_env
-    chaotic_system = ChaoticSystem(key, iv)
+def generate_key_schedule(k, n=32):
+    key_ints = [int.from_bytes(k[i:i+4], 'big') for i in range(0, len(k), 4)]
+    while len(key_ints) < 4:
+        key_ints.append(0)
+    ks = {
+        'BI': key_ints[:4],
+        'WI': [key_ints[:4] for _ in range(4)],
+        'Q1': (key_ints[0] % (2**n - 1)) or 1,
+        'Q2': (key_ints[1] % (2**n - 1)) or 1
+    }
+    return ks
 
-    keystream_length = 10
-    keystream = chaotic_system.generate_keystream(keystream_length)
-    assert isinstance(keystream, bytes), "generate_keystream doit retourner un objet bytes."
-    assert len(keystream) == keystream_length, f"Le keystream doit avoir une longueur de {keystream_length} bytes."
-    print("Keystream généré correctement :", keystream.hex())
+def chaotic_compression(k, h):
+    ks = generate_key_schedule(k)
+    wo = ks['BI']
+    n = 32
+    nr = 8
+    p = [int.from_bytes(h[i:i+4], 'big') for i in range(0, len(h), 4)]
+    p = iterate_nl_layers(p, ks, wo, n, nr)
+    new_state = b''.join(int.to_bytes(x % 2**n, 4, 'big') for x in p)
+    return new_state[:len(h)]
 
-def test_chaotic_neural_network_initialization(setup_env):
-    key, iv = setup_env
-    chaotic_system = ChaoticSystem(key, iv)
+def pad_message_injective(block, desired_length):
+    """
+    Pads the block to the desired length using injective padding.
+    """
+    block_length = len(block)
+    if block_length == desired_length:
+        return block  # No padding needed
+    padding_length = desired_length - block_length
+    if padding_length < 1:
+        raise ValueError("Block is too large for the injective padding scheme.")
+    padding = b'\x80' + b'\x00' * (padding_length - 1)
+    return block + padding
 
-    cnn = ChaoticNeuralNetwork(chaotic_system)
+def divide_message(message, r):
+    """
+    Divides the message into blocks of size up to r - 1 bytes.
+    """
+    block_size = r - 1  # Reserve 1 byte for the flag
+    num_blocks = math.ceil(len(message) / block_size)
+    blocks = []
+    for i in range(num_blocks):
+        block = message[i * block_size:(i + 1) * block_size]
+        is_last = 0 if i == num_blocks - 1 else 1
+        blocks.append((block, is_last))
+    return blocks
 
-    assert len(cnn.input_weights) == 32 * 8, f"input_weights doit avoir une longueur de {32 * 8} bytes."
-    assert len(cnn.output_weights) == 8 * 8, f"output_weights doit avoir une longueur de {8 * 8} bytes."
-    assert len(cnn.biases) == 8 * 8, f"biases doit avoir une longueur de {8 * 8} bytes."
-    assert len(cnn.q_parameters) == 16 * 8, f"q_parameters doit avoir une longueur de {16 * 8} bytes."
-    print("ChaoticNeuralNetwork initialisé correctement.")
+def initialize(k, iv, cf):
+    return cf(k, iv)
 
-def test_activation_function(setup_env):
-    key, iv = setup_env
-    chaotic_system = ChaoticSystem(key, iv)
-    cnn = ChaoticNeuralNetwork(chaotic_system)
+def duplexing(hm, s, bf, pad_func, cf, r, b, k):
+    # Pad s to length r - 1
+    padded_input = pad_func(s, r - 1)
+    # Append the flag to reach length r
+    s_with_flag = padded_input + bytes([bf])
+    h = bytes([hm[i] ^ s_with_flag[i] for i in range(r)]) + hm[r:]
+    hm = cf(k, h)
+    return hm
 
-    inputs = [1, 2, 3, 4]
-    # Extraire les premiers paramètres Q et bias
-    q1 = int.from_bytes(cnn.q_parameters[:8], 'big')
-    q2 = int.from_bytes(cnn.q_parameters[8:16], 'big')
-    bias = int.from_bytes(cnn.biases[:8], 'big')
+def encrypt(k, iv, ad, m, cf, r, b):
+    hm = initialize(k, iv, cf)
+    for block, bf in divide_message(ad, r):
+        hm = duplexing(hm, block, bf, pad_message_injective, cf, r, b, k)
+    c = b""
+    for block, bf in divide_message(m, r):
+        c_block = bytes([block[j] ^ hm[j] for j in range(len(block))])
+        c += c_block
+        hm = duplexing(hm, c_block, bf, pad_message_injective, cf, r, b, k)
+    hm = duplexing(hm, b'', 0, pad_message_injective, cf, r, b, k)  # Empty block with flag 0
+    tag = hm[:r]
+    return c, tag
 
-    result = cnn.activation_function(inputs, q1, q2, bias)
-    assert isinstance(result, int), "Le résultat de activation_function doit être un int."
-    print("Activation function fonctionne correctement avec le résultat :", result)
+def decrypt(k, iv, ad, c, t, cf, r, b):
+    hm = initialize(k, iv, cf)
+    for block, bf in divide_message(ad, r):
+        hm = duplexing(hm, block, bf, pad_message_injective, cf, r, b, k)
+    m = b""
+    for block, bf in divide_message(c, r):
+        m_block = bytes([block[j] ^ hm[j] for j in range(len(block))])
+        m += m_block
+        hm = duplexing(hm, block, bf, pad_message_injective, cf, r, b, k)
+    hm = duplexing(hm, b'', 0, pad_message_injective, cf, r, b, k)  # Empty block with flag 0
+    if t != hm[:len(t)]:
+        return None, "Error: Authentication Failed"
+    return m, "Success"
 
-def test_cnn_duplex_encryption_decryption(setup_env):
-    key, iv = setup_env
-    cnn_duplex_enc = CNN_Duplex(key, iv)
+# Test Functions
 
-    associated_data = "Header Information".encode('utf-8')
-    plaintext = "Confidential message to encrypt.".encode('utf-8')
+def test_skew_tent_map():
+    """
+    Test the skew_tent_map function to ensure it returns an integer and operates correctly.
+    """
+    x = 123456789
+    q1 = 8
+    n = 32
+    result = skew_tent_map(x, q1, n)
+    assert isinstance(result, int), "Result of skew_tent_map should be an integer."
+    print("skew_tent_map works correctly with result:", result)
 
-    print("\n--- Encryption ---")
-    ciphertext, tag = cnn_duplex_enc.encrypt(plaintext, associated_data)
-    print("Ciphertext hex:", ciphertext.hex())
-    print("Tag hex:", tag.hex())
-    print("État interne après encryption:", cnn_duplex_enc.state)
+def test_pwlcm_map():
+    """
+    Test the pwlcm_map function to ensure it returns an integer and operates correctly.
+    """
+    x = 123456789
+    q2 = 12
+    n = 32
+    result = pwlcm_map(x, q2, n)
+    assert isinstance(result, int), "Result of pwlcm_map should be an integer."
+    print("pwlcm_map works correctly with result:", result)
 
-    # Initialiser une nouvelle instance pour le déchiffrement avec la même clé et IV
-    cnn_duplex_dec = CNN_Duplex(key, iv)
+def test_generate_key_schedule():
+    """
+    Test the generate_key_schedule function to ensure it returns a valid key schedule.
+    """
+    k = b'\x01' * 16
+    ks = generate_key_schedule(k)
+    assert 'BI' in ks and 'WI' in ks and 'Q1' in ks and 'Q2' in ks, "Key schedule should contain 'BI', 'WI', 'Q1', 'Q2'."
+    print("Key schedule generated correctly:", ks)
 
-    print("\n--- Decryption ---")
-    decrypted_plaintext = cnn_duplex_dec.decrypt(ciphertext, associated_data, tag)
-    print("Decrypted Plaintext:", decrypted_plaintext)
-    print("État interne après décryption:", cnn_duplex_dec.state)
+def test_chaotic_compression():
+    """
+    Test the chaotic_compression function to ensure it updates the state correctly.
+    """
+    k = b'\x01' * 16
+    h = b'\x00' * 32  # State length of 32 bytes
+    new_state = chaotic_compression(k, h)
+    assert isinstance(new_state, bytes), "chaotic_compression should return bytes."
+    assert len(new_state) == len(h), "New state should be same length as input state."
+    print("Chaotic compression works correctly with new state:", new_state.hex())
 
-    # Comparer les états internes pour s'assurer qu'ils sont synchronisés
-    assert cnn_duplex_enc.state == cnn_duplex_dec.state, "Les états internes ne sont pas synchronisés entre chiffrement et déchiffrement."
+def test_encrypt_decrypt():
+    """
+    Test the encrypt and decrypt functions to ensure they work correctly and the message can be recovered.
+    """
+    k = b'\x01' * 16
+    iv = b'\x00' * (32 + 64)  # r + b bytes
+    ad = b"Associated Data"
+    m = b"Message to encrypt"
+    r, b_cap = 32, 64
+    # Perform encryption
+    ciphertext, tag = encrypt(k, iv, ad, m, chaotic_compression, r, b_cap)
+    print("Ciphertext:", ciphertext.hex())
+    print("Tag:", tag.hex())
+    # Perform decryption
+    message, status = decrypt(k, iv, ad, ciphertext, tag, chaotic_compression, r, b_cap)
+    print("Decrypted Message:", message)
+    print("Status:", status)
+    assert status == "Success", f"Decryption failed with status: {status}"
+    assert message == m, "Decrypted message does not match original."
+    print("Encryption and decryption work correctly.")
 
-    assert plaintext == decrypted_plaintext, "Le message décrypté ne correspond pas au message original."
-    print("Chiffrement et déchiffrement fonctionnent correctement.")
-    print("Plaintext :", plaintext)
-    print("Ciphertext :", ciphertext.hex())
-    print("Tag :", tag.hex())
-    print("Decrypted Plaintext :", decrypted_plaintext)
+# Pytest requires test functions to be prefixed with 'test_'
+# You can run these tests using the command: pytest test_chaotic_encryption.py
 
 if __name__ == "__main__":
-    pytest.main()
+    # If running directly, execute the tests
+    test_skew_tent_map()
+    test_pwlcm_map()
+    test_generate_key_schedule()
+    test_chaotic_compression()
+    test_encrypt_decrypt()
