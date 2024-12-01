@@ -1,4 +1,5 @@
 import math
+import os
 
 # Padding Function
 def pad_message_injective(block, desired_length):
@@ -478,10 +479,11 @@ def generate_keystream(k, iv, length, cf, r, b):
         hm = duplexing(hm, b'', 0, pad_message_injective, cf, r, b, k)
     return keystream[:length]
 
+
 # Example Parameters
 if __name__ == "__main__":
     # Rate and Block sizes
-    r, b = 32, 64  # 'r' is the rate, 'b' is the capacity of the duplex construction
+    r, b = 32, 64  # 'r' is the rate (in bytes), 'b' is the capacity of the duplex construction (in bytes)
 
     # Secret key and Initialization Vector
     k = b'\x01' * 16  # Secret key of 16 bytes (128 bits)
@@ -504,11 +506,63 @@ if __name__ == "__main__":
     print("Status:", status)
 
     # Generate a keystream of desired length, e.g., 1 MB
-    keystream_length = 1024 * 1024  # 1 MB
+    keystream_length = 1024 * 1024  # 1 MB in bytes
     keystream = generate_keystream(k, iv, keystream_length, chaotic_compression, r, b)
 
-    # Save the keystream to a file
+    # Save the keystream to a binary file
     with open('keystream.bin', 'wb') as f:
         f.write(keystream)
 
     print("Keystream generated and saved to 'keystream.bin'.")
+
+    # Generate 100 keystream files for NIST STS
+    num_files = 100
+    bits_per_file = 1_000_000
+    bytes_per_file = bits_per_file // 8
+    if bits_per_file % 8 != 0:
+        bytes_per_file += 1
+
+    data_filenames = []
+
+    for i in range(1, num_files + 1):
+        # Use a unique IV for each keystream file
+        iv = os.urandom(r + b)  # Generates a random IV
+
+        # Generate the keystream
+        keystream = generate_keystream(k, iv, bytes_per_file, chaotic_compression, r, b)
+
+        # Convert keystream to a string of '0's and '1's
+        keystream_bits = ''.join(format(byte, '08b') for byte in keystream)
+
+        # Ensure the keystream_bits has exactly bits_per_file bits
+        keystream_bits = keystream_bits[:bits_per_file]
+
+        # Save the keystream bits to a file named 'dataXXX'
+        filename = f"data{str(i).zfill(3)}"
+        with open(filename, 'w') as f:
+            f.write(keystream_bits)
+
+        print(f"File '{filename}' generated with {len(keystream_bits)} bits.")
+
+        # Optional: Print bit frequencies
+        zeros = keystream_bits.count('0')
+        ones = keystream_bits.count('1')
+        print(f"Keystream '{filename}' contains {zeros} zeros and {ones} ones.")
+
+        data_filenames.append(filename)
+
+    # Assemble the files into one
+    assembled_filename = 'keystream_all.txt'
+    with open(assembled_filename, 'w') as outfile:
+        for fname in data_filenames:
+            with open(fname, 'r') as infile:
+                outfile.write(infile.read())
+
+    print(f"All keystream files assembled into '{assembled_filename}'.")
+
+    # Delete the individual data files
+    for fname in data_filenames:
+        os.remove(fname)
+        print(f"File '{fname}' deleted.")
+
+    print("All individual keystream files deleted.")
