@@ -1,5 +1,6 @@
 import math
 import os
+import hashlib
 
 # Padding Function
 def pad_message_injective(block, desired_length):
@@ -375,8 +376,12 @@ def chaotic_compression(k, h):
     p = [int.from_bytes(h[i:i+4], 'big') for i in range(0, len(h), 4)]
     # Iterate the non-linear layers
     p = iterate_nl_layers(p, ks, wo, n, nr)
-    # Convert p back to bytes to form the new state
-    new_state = b''.join(int.to_bytes(x % 2**n, 4, 'big') for x in p)
+    # Convert p to bytes
+    p_bytes = b''.join(int.to_bytes(x % 2**n, 4, 'big') for x in p)
+    # Enhanced mixing using SHA-256
+    sha = hashlib.sha256()
+    sha.update(p_bytes)
+    new_state = sha.digest()
     return new_state[:len(h)]
 
 # CNN-Duplex Initialization
