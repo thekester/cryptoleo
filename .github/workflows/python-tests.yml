@@ -1,10 +1,10 @@
 name: Python package
 
 on:
-  push:
-    branches: [ main ]  # Remplacez 'main' par la branche que vous utilisez
-  pull_request:
-    branches: [ main ]
+  push:  # Exécuter lors de chaque push
+    branches: ['*']  # Le caractère '*' permet d'inclure toutes les branches
+  pull_request:  # Exécuter lors de chaque pull request
+    branches: ['*']  # Inclut toutes les branches
 
 jobs:
   build:
